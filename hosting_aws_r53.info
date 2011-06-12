@@ -1,0 +1,4 @@
+name = Aegir Hosting AWS Route 53 DNS
+description = This provides an interface for the Amazon Route 53 DNS Service
+core = 6.x
+version = 6.x-1.0.0
