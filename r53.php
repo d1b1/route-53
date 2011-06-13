@@ -652,8 +652,14 @@ final class Route53Request
     $curl = curl_init();
     curl_setopt($curl, CURLOPT_USERAGENT, 'Route53/php');
 
-    curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, ($this->r53->verifyHost() ? 1 : 0));
-    curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, ($this->r53->verifyPeer() ? 1 : 0));
+    // SSMITH Commented for local XAMPP workaround.
+    //curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, ($this->r53->verifyHost() ? 1 : 0));
+    //curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, ($this->r53->verifyPeer() ? 1 : 0));
+
+    curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, FALSE );
+    curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, FALSE);
+
+    // SSMITH WorkaROUND
 
     curl_setopt($curl, CURLOPT_URL, $url);
     curl_setopt($curl, CURLOPT_RETURNTRANSFER, false);

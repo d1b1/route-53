@@ -1,0 +1,19 @@
+<?php
+
+function amazon_r53_requirements($phase) {
+
+  $t = get_t();
+  $requirements = array();
+
+  if (!function_exists('curl_init')) {
+      $requirements['aws_r53_requirements'] = array(
+        'title'       => $t('Missing PHP Curl Extension'),
+        'value'       => $t('Missing Extension'),
+        'severity'    => REQUIREMENT_ERROR,
+        'description' => $t('Missing PHP Curl Extension.'),
+      );
+    }
+
+  return $requirements;
+
+}

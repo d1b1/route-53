@@ -1,0 +1,736 @@
+<?php
+
+function amazon_r53_menu() {
+
+  $items = array();
+
+  $items['admin/hosting/r53'] = array(
+    'title'            => t('Amazon R53'),
+    'description'      => t('Setup the site settings for the Amazon R53 Service.'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('amazon_r53_settings'),
+    'access arguments' => array('manage r53'),
+    'type'             => MENU_NORMAL_ITEM,
+    'file'             => 'amazon_r53.admin.inc',
+  );
+
+  $items['admin/hosting/r53/zones'] = array(
+    'title'            => t('Zones'),
+    'description'      => t('Set the site settings for the Amazon R53 Setttings.'),
+    'page callback'    => 'amazon_r53_list_hosted_zones',
+    'page arguments'   => array(),
+    'access arguments' => array('manage r53'),
+    'type'             =>  MENU_NORMAL_ITEM,
+  );
+
+  $items['admin/hosting/r53/list'] = array(
+    'title'            => t('List'),
+    'description'      => t('Set the site settings for the Amazon R53 Setttings.'),
+    'page callback'    => 'amazon_r53_list',
+    'page arguments'  => array(),
+    'access arguments' => array('manage r53'),
+    'type'             =>  MENU_NORMAL_ITEM,
+  );
+
+  $items['admin/hosting/r53/add'] = array(
+    'title'            => t('Add'),
+    'description'      => t('Set the site settings for the Amazon R53 Setttings.'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('amazon_r53_add_record_form'),
+    'access arguments' => array('manage r53'),
+    'type'             =>  MENU_NORMAL_ITEM,
+  );
+
+  $items['admin/hosting/r53/test'] = array(
+    'title'            => t('Check'),
+    'description'      => t('This Feature provides the ability to test the integration between Aegir and AWS R3.'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('amazon_r53_check_form'),
+    'access arguments' => array('manage r53'),
+    'type'             =>  MENU_NORMAL_ITEM,
+  );
+
+  $items['node/%node/dns'] = array(
+    'title'            => 'DNS',
+    'description'      => 'List of packages available for this platform',
+    'page callback'    => 'amazon_r53_site_info',
+    'page arguments'   => array(1),
+    'type'             => MENU_LOCAL_TASK,
+    'access callback'  => '_amazon_r53_access',
+    'access arguments' => array(1, 'view site launch information'),
+    'weight'           => 1,
+  );
+
+  $items['admin/hosting/r53/%/edit'] = array(
+    'title'            => t('Edit R53 Zone Record'),
+    'description'      => t('Set the site settings for the Amazon R53 Setttings.'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('amazon_r53_add_record_form', NULL, NULL , 3),
+    'access arguments' => array('manage r53'),
+    'type'             => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+function _amazon_r53_access( $node ) {
+
+ if (empty($node)) {
+   return FALSE;
+ }
+
+ return ($node->type=='site');
+}
+
+
+function amazon_r53_site_info($node) {
+
+  $type = 'byName';
+  $value = $node->title . '.ngpvanhost.com.';
+  $hosted_zone = _amazon_get_current_hosted_zone();
+
+  drupal_set_title('DSN Information for ' . $value);
+
+  // Adding this to test.
+  $node->aliases[] = $node->title;
+  $result = _amazon_r53_lookup_site( $type, $node->aliases);
+
+  $output = '';
+  if ($result['status']) {
+    $output = '<b>SUCCESS!</b> An entry was found for this in the zone file.<br><br>';
+
+    $header = array();
+    $header[] = array( 'data' => t('Name') );
+    $header[] = array( 'data' => t('Value') );
+
+    foreach ($result['entry'] as $index => $entry) {
+      $rows = array();
+      $rows[] = array( 'Name', $entry['Name'] );
+      $rows[] = array( 'Type', $entry['Type'] . ' ( ' . _amazon_get_type_name($entry['Type']) . ')' );
+      $rows[] = array( 'TTL', $entry['TTL'] . ' seconds' );
+      $rows[] = array( 'Value', implode(',<br>', $entry['ResourceRecords']) );
+      $rows[] = array( l('Edit DNS record', 'admin/hosting/r53/' . $entry['Name'] . '/edit' ), array( 'colspan' => 2) );
+
+      $output .= '<h2>Entry: ' . $entry['Name'] . '</h2>';
+      $output .= theme('table', $header, $rows);
+    }
+
+    if (isset($result['unmatched']) && !empty($result['unmatched'])) {
+      $output .= "<br><h2>UnManaged or Client Domains</h2>";
+      $output .= "The following domains are managed by NGPVANhost.com zonefile. The client or an different DNS manager is required.<br>";
+      $output .= '<ul style="margin: 20px 50px;"><li>' . implode('<li>', $result['unmatched']) . '</ul>';
+    }
+
+  }
+  else {
+  	$output = 'The entry you provides was not found in the zone file; If the DNS
+  	           record is not defined, then this site is using the default wild
+  	           card DNS Entry for the domain.';
+
+    $result = _amazon_r53_lookup_site($type, array('\052.ngpvanhost.com'));
+
+    $header = array();
+    $header[] = array( 'data' => t('Name') );
+    $header[] = array( 'data' => t('Value') );
+
+    foreach ($result['entry'] as $index => $entry) {
+      $rows = array();
+      $rows[] = array( 'Name', $entry['Name'] );
+      $rows[] = array( 'Type', $entry['Type'] . ' ( ' . _amazon_get_type_name($entry['Type']) . ')' );
+      $rows[] = array( 'TTL', $entry['TTL'] . ' seconds' );
+      $rows[] = array( 'Value', implode(',<br>', $entry['ResourceRecords']) );
+
+      $output .= '<h2>Entry: ' . $entry['Name'] . ' (Using Domain *)</h2>';
+      $output .= theme('table', $header, $rows);
+    }
+
+  }
+
+  $output .= drupal_get_form('amazon_r53_add_record_form', $form_state, $node);
+
+  return $output;
+}
+
+function _amazon_get_type_name( $type ) {
+
+  $types = _amazon_r53_get_record_types();
+
+  return $types[$type];
+}
+
+/*
+ * This builds the add record form.
+ *
+ */
+function amazon_r53_add_record_form($form, $form_state, $node = NULL, $record = NULL) {
+
+  if (!empty($node)) {
+    $default_aliases = $node->aliases;
+    $collapsed = TRUE;
+  }
+
+  $entry = array();
+  if (!empty($record)) {
+    $collapsed = FALSE;
+
+    $entry = _amazon_r53_get_record($record);
+  }
+
+  $form = array();
+
+  $form['dns_info'] = array(
+    '#type'         => 'fieldset',
+    '#title'       => t('DNS Entry'),
+    '#collapsible' => $collapsed,
+    '#collapsed'   => $collapsed,
+    '#description' => t('This form provides the ability to add, edit or delete a DNS entry.'),
+  );
+
+  // This code will make the site aliases the default options. And it will
+  // filter to ony show the aliases that fall in the domain managed by
+  // the registered DNS Zone File.
+  if (isset($default_aliases) && count($default_aliases)>1) {
+    $form['dns_info']['name'] = array(
+      '#type'          => 'select',
+      '#title'         => t('Entry Name'),
+      '#options'       => _amazon_r53_filter($default_aliases),
+      '#required'      => TRUE,
+      '#element_validate' => array( 'amazon_r53_validate_entry_value' ),
+      '#weight'        => 20,
+    );
+  }
+  else {
+    $form['dns_info']['name'] = array(
+      '#type'          => 'textfield',
+      '#title'         => t('Entry Name'),
+      '#default_value' => !empty($entry['Name']) ? $entry['Name'] : '.ngpvanhost.com.',
+      '#required'      => TRUE,
+      '#weight'        => 30,
+      '#element_validate' => array( 'amazon_r53_validate_entry_value' ),
+      '#description'   => t('Enter the record value. The value must end in the value .ngpvanhost.com. (training dot is required!)'),
+    );
+  }
+
+  $form['dns_info']['#zone_entry'] = $entry;
+
+  if (!empty($node->aliases)) {
+    $form['dns_info']['name']['#default_value'] = $default_aliases[0] . '.';
+  }
+
+  $form['dns_info']['type'] = array(
+    '#type'          => 'select',
+    '#title'         => t('type'),
+    '#options'       => _amazon_r53_get_record_types(),
+    '#required'      => TRUE,
+    '#weight'        => 40,
+    '#default_value' => !empty($entry['Type']) ? $entry['Type'] : variable_get('aws_r53_default_record_type', 'CNAME'),
+  );
+
+  $form['dns_info']['ttl'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('TTL'),
+    '#default_value' => !empty($entry['TTL']) ? $entry['TTL'] : variable_get('aws_r53_default_record_ttl', 3600),
+    '#required'      => TRUE,
+    '#description'   => t('Enter a time to live in seconds. 100 is the default.'),
+    '#weight'        => 50,
+  );
+
+  $form['dns_info']['value'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Value'),
+    '#default_value' => !empty($entry['ResourceRecords']) ? _amazon_r53_entry_output($entry['ResourceRecords']) : variable_get('aws_r53_default_record_value', ''),
+    '#required'      => TRUE,
+    '#description'   => t('Enter a CName or IP address.<br><br>
+        West ELB: <b>shared-w-1953938407.us-west-1.elb.amazonaws.com</b><br>
+        East ELB: <b>shared-e-1663387816.us-east-1.elb.amazonaws.com</b>
+        '),
+    '#weight'        => 60,
+  );
+
+  if (!empty($entry)) {
+
+    $form['dns_info']['updatebutton'] = array(
+      '#type'          => 'submit',
+      '#value'         => t('Update Entry'),
+      '#weight'        => 81,
+    );
+
+    $form['dns_info']['deletebutton'] = array(
+      '#type'          => 'submit',
+      '#value'         => t('Delete Entry'),
+      '#weight'        => 82,
+    );
+  }
+  else {
+    $form['dns_info']['addbutton'] = array(
+      '#type'          => 'submit',
+      '#value'         => t('Add Entry'),
+      '#weight'        => 80,
+    );
+  }
+
+  $form['dns_info']['cancel'] = array(
+    '#value'         => l('Cancel', 'admin/hosting/r53/list'),
+    '#weight'        => 90,
+  );
+
+  return $form;
+}
+
+/**
+ * This is an element validate for the DNS Value.
+ */
+function amazon_r53_validate_entry_value( $element ) {
+
+  // Example '/\.mydomain\.com\.$/'
+  $zone_name = $_SESSION['hosted_zone_name'];
+  $zone_name = str_replace('.', '\.', $zone_name);
+  $zone_name = '/' . $zone_name . '$/';
+
+  if (!preg_match($zone_name, $element['#value'])) {
+    form_set_error('name', 'Zone Record values must end in ' . $_SESSION['hosted_zone_name'] . '.');
+    return;
+  }
+
+  $matched = _amazon_r53_get_record( $element['#value'] );
+  if (!empty($matched)) {
+    form_set_error('name', 'Sorry, there is already a DNS record. Please check your entry name. Duplicates are not allowed.');
+  }
+
+}
+
+/**
+ * This is the submit function for the for the add/edit/delete form.
+ * TODO: Move the delete into either a single array of change requests or
+ * its down query and delete function.
+ */
+function amazon_r53_add_record_form_submit($form, $form_state) {
+
+  $values  = $form_state['values'];
+  $clicked = $form_state['clicked_button']['#value'];
+
+  if ($clicked=='Update Entry') {
+
+    // This is the exsting value. We use this to allow us
+    // to the the API whick record to delete before we add/update
+    $zone_entry = $form['dns_info']['#zone_entry'];
+
+    $requested_changes = array();
+    $requested_changes[] = array(
+      'mode'  => 'DELETE',
+      'name'  => $zone_entry['Name'],
+      'type'  => $zone_entry['Type'],
+      'ttl'   => $zone_entry['TTL'],
+      'value' => $zone_entry['ResourceRecords']
+    );
+
+    $result = _amazon_r53_change_resource_record( $requested_changes );
+
+    if ($result['status']) {
+      drupal_set_message('Processing DELETE becore creating the new record.');
+      drupal_set_message($result['message']);
+      drupal_set_message($result['id']);
+    }
+    else {
+      drupal_set_message('Error encountered while processing the delete step of the update request.');
+      return;
+    }
+
+    // IF the delete does not process we will not get this far.
+    $requested_changes = array();
+    $requested_changes[] = array(
+      'mode'  => 'CREATE',
+      'name'  => $values['name'],
+      'type'  => $values['type'],
+      'ttl'   => $values['ttl'],
+      'value' => $values['value']
+    );
+
+    $result = _amazon_r53_change_resource_record( $requested_changes );
+
+    if ($result['status']) {
+      drupal_set_message('Processed an UPDATE of an existing DNS record.');
+    }
+    else {
+      drupal_set_message('Error encountered while processing the create/update request.');
+    }
+
+    drupal_goto('admin/hosting/r53/'. $values['name'] .'/edit');
+  }
+
+  if ($clicked=='Delete Entry') {
+
+    // This is the exsting value. We use this to allow us
+    // to the the API whick record to delete before we add/update
+    $zone_entry = $form['dns_info']['#zone_entry'];
+
+    $requested_changes = array();
+    $requested_changes[] = array(
+      'mode'  => 'DELETE',
+      'name'  => $zone_entry['Name'],
+      'type'  => $zone_entry['Type'],
+      'ttl'   => $zone_entry['TTL'],
+      'value' => $zone_entry['ResourceRecords']
+    );
+
+    $result = _amazon_r53_change_resource_record( $requested_changes );
+
+    if ($result['status']) {
+      drupal_set_message('Processing the Delete');
+    }
+    else {
+      drupal_set_message('Error encountered while processing the delete request.');
+    }
+
+    drupal_set_message($result['message']);
+    drupal_set_message($result['id']);
+    return;
+  }
+
+  if ($clicked=='Add Entry') {
+    $requested_changes = array();
+    $requested_changes[] = array(
+      'mode'  => 'CREATE',
+      'name'  => $values['name'],
+      'type'  => $values['type'],
+      'ttl'   => $values['ttl'],
+      'value' => $values['value']
+    );
+
+    $result = _amazon_r53_change_resource_record( $requested_changes);
+
+    drupal_set_message($result['message']);
+    drupal_set_message($result['id']);
+
+    if ($result['status']) {
+      drupal_set_message('Processing the CREATE');
+      drupal_goto('admin/hosting/r53/'. $values['name'] .'/edit');
+    }
+    else {
+      drupal_set_message('Error encountered while processing the create request.');
+    }
+
+  }
+
+}
+
+/**
+ * This is a helper function that collpases the values
+ * in the Zone Record Recordset into a string for the edit
+ * form.
+ */
+function _amazon_r53_entry_output( $values = array()) {
+
+  return implode("\n", $values);
+}
+
+/**
+ * This is a helper function that will filter the site alisess
+ * to only show options that fall in the zonefile base domain.
+ */
+function _amazon_r53_filter( $aliases ) {
+
+  $return = array();
+  foreach ($aliases as $idx => $alias) {
+    if (preg_match("/ngpvanhost\.com$/", $alias)) {
+      $return[$alias . '.'] = $alias . '.';
+    }
+
+  }
+  return $return;
+
+}
+
+/**
+ * This function gets the base R53 Class.
+ */
+function _amazon_r53_get_service() {
+
+ // Load the r53.php class into the module
+
+  require_once('r53.php');
+  $r53 = new Route53(variable_get('aws_r53_key_id', ''), variable_get('aws_r53_secret_key', ''));
+
+  return $r53;
+}
+
+function _amazon_r53_change_resource_record( $requested_changes ) {
+
+  $r53 = _amazon_r53_get_service();
+  $hosted_zone = _amazon_get_current_hosted_zone();
+
+  $changes = array();
+  foreach ($requested_changes as $key => $value) {
+    $changes[] = $r53->prepareChange($value['mode'], $value['name'], $value['type'], $value['ttl'], $value['value']);
+  }
+
+  $result = $r53->changeResourceRecordSets($hosted_zone, $changes);
+
+  if (!empty($result)) {
+	  if ($result['Status']=='PENDING') {
+	    $status = TRUE;
+	    $message = 'Change is processing.';
+	    $id = $result['Id'];
+	  }
+	  else {
+	    $status = FALSE;
+	    $message = 'Unknown';
+	    $id = 'NA';
+	  }
+  }
+  else {
+    $status = FALSE;
+    $message = 'Failed';
+    $id = 'NA';
+  }
+
+  return array('status' => $status, 'message' => $message, 'id' => $id);
+}
+
+/**
+ * This function returns a valid list of Record Types.
+ */
+function _amazon_r53_get_record_types() {
+
+  return array(
+    'A'     => 'A Record',
+    'AAAA'  => 'AAAA Record',
+    'CNAME' => 'CName',
+    'MX'    => 'MX',
+    'NS'    => 'NS',
+    'PTR'   => 'PTR',
+    'SOA'   => 'SOA',
+    'SPF'   => 'SPF',
+    'SRV'   => 'SRV',
+    'TXT'   => 'TXT',
+  );
+
+}
+
+/**
+ * This function checks that the Zone is defined. If not defined
+ * this will push the user to the list of zone files. Coming soon...
+ */
+function _amazon_get_current_hosted_zone() {
+
+  $hosted_zone = $_SESSION['hosted_zone_id']; //variable_get('aws_r53_hosted_zone','');
+
+  if (!$hosted_zone) {
+    drupal_goto('admin/hosting/r53/zones');
+  }
+
+  return $hosted_zone;
+}
+
+function _amazon_get_hosted_zones() {
+
+  $r53 = _amazon_r53_get_service();
+
+  $result = $r53->listHostedZones();
+
+}
+
+/**
+ * This function will query for a list of all the zones
+ * managed by the current auto information.
+ */
+function amazon_r53_list_hosted_zones() {
+
+  $r53 = _amazon_r53_get_service();
+
+  $result = $r53->listHostedZones();
+  $hostedZone = $result['HostedZone'];
+
+  $header = array(
+    'Status',
+    'ID',
+	'Name',
+    '',
+    '',
+  );
+
+  if ($_GET['z']) {
+    $_SESSION['hosted_zone_id']   = $_GET['z'];
+    $_SESSION['hosted_zone_name'] = $_GET['n'];
+    //drupal_goto('admin/hosting/r53/list');
+  }
+
+  $rows = array();
+  foreach ($hostedZone as $idx => $zone) {
+    $row = array();
+    $row[] = array('data' => $_SESSION['hosted_zone_id']==$zone['Id'] ? 'X' : '');
+    $row[] = array('data' => $zone['Id']);
+    $row[] = array('data' => $zone['Name']);
+    $row[] = array('data' => l('Select', 'admin/hosting/r53/zones', array( 'query' => 'z=' . $zone['Id'] . '&n=' . $zone['Name'])) );
+    $row[] = array('data' => l('Manage', 'admin/hosting/r53/list') );
+    $rows[] = array('data' => $row);
+  }
+
+  $output = theme('table', $header, $rows);
+
+  return $output;
+}
+
+/**
+ * This function will rerun a list of all the values in a zone.
+ */
+function amazon_r53_list() {
+
+  drupal_set_title('Amazon Route 53 Zone Records');
+
+  $hosted_zone = _amazon_get_current_hosted_zone();
+
+  $r53 = _amazon_r53_get_service();
+
+  //dsm($r53->listHostedZones());
+  //dsm($r53->getHostedZone('/hostedzone/Z6Y5M2ZF24ULI'));
+
+  $result = $r53->listResourceRecordSets($hosted_zone);
+  $ResourceRecordSets = $result['ResourceRecordSets'];
+
+  $header = array(
+    'Name',
+	'Type',
+	'TTL',
+	'Records',
+  );
+
+  $rows = array();
+  foreach ($ResourceRecordSets as $index => $entry) {
+    $row = array();
+	$row[] = array( 'data' => l($entry['Name'], 'admin/hosting/r53/' . $entry['Name'] . '/edit'));
+	$row[] = array( 'data' => $entry['Type']);
+	$row[] = array( 'data' => $entry['TTL']);
+	$row[] = array( 'data' => $entry['ResourceRecords'][0]);
+
+	$rows[] = array( 'data' => $row);
+  }
+
+  $output = 'The following is a list of all the zone entries for this zone file. ';
+  $output .= l('Add New Entry', 'admin/hosting/r53/add');
+  $output .= theme('table', $header, $rows);
+
+  return $output;
+}
+
+function amazon_r53_check_form($form, $form_state) {
+
+  drupal_set_title('Check the Status of A Site CName');
+
+  $form = array();
+
+  $form['info'] = array(
+    '#value'          => 'This form provides the ability to add an entry into the zone file.',
+  );
+
+  $form['hosted_zone'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('hosted_zone'),
+    '#default_value' => variable_get('aws_r53_hosted_zone',''),
+    '#required'      => TRUE
+  );
+
+  $form['value'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Value'),
+    '#default_value' => '*.ngpvanhost.com',
+    '#required'      => TRUE
+  );
+
+  $form['type'] = array(
+    '#type'          => 'select',
+    '#title'         => t('type'),
+    '#options'       => array('byName', 'byValue'),
+    '#required'      => TRUE
+  );
+
+  $form['submit'] = array(
+    '#type'          => 'submit',
+    '#value'         => t('Check Entry')
+  );
+
+  $form['cancel'] = array(
+    '#value'         => l('Cancel', 'admin/hosting/r53/list'),
+  );
+
+  return $form;
+}
+
+function amazon_r53_check_form_submit($form, $form_state) {
+
+  $values = $form_state['values'];
+
+  $type        = $values['type'];
+  $value       = $values['value'];
+
+  $result = _amazon_r53_lookup_site( $type, $value);
+
+  if ($result['status']) {
+    drupal_set_message('An entry was found for this in the zone file.');
+    drupal_set_message('Name: ' . $result['entry']['Name']);
+    drupal_set_message('Type: ' . $result['entry']['Type']);
+    drupal_set_message('TTL: ' . $result['entry']['TTL']);
+    drupal_set_message('Value: ' . $result['entry']['ResourceRecords'][0]);
+  }
+  else {
+    drupal_set_message('The entry you provides was not found in the zone file;');
+    drupal_set_message('If the DNS record is not defined, then this site is using the default wild card DNS Entry for the domain.');
+  }
+
+}
+
+/**
+ * This function will get the recordset information for a specific record
+ * in the Hosted Zone
+ */
+function _amazon_r53_get_record( $record ) {
+
+  $r53 = _amazon_r53_get_service();
+
+  $result = $r53->listResourceRecordSets(_amazon_get_current_hosted_zone());
+  $ResourceRecordSets = $result['ResourceRecordSets'];
+
+  $return = NULL;
+
+  foreach ($ResourceRecordSets as $index => $entry) {
+    if ($entry['Name'] == $record) {
+      $return = $entry;
+    }
+  }
+
+  return $return;
+}
+
+/*
+ * This function will attempt to match the site name to the
+ * and the aliases to any existing DNS records.
+ *
+ */
+function _amazon_r53_lookup_site( $type, $aliases ) {
+
+  $r53 = _amazon_r53_get_service();
+
+  $result = $r53->listResourceRecordSets(_amazon_get_current_hosted_zone());
+  $ResourceRecordSets = $result['ResourceRecordSets'];
+
+  $return = array();
+  $found = array();
+  foreach ($ResourceRecordSets as $index => $entry) {
+    if (in_array(_amazon_clean_name($entry['Name']), $aliases)) {
+    	$return[] = $entry;
+      $found[] = _amazon_clean_name($entry['Name']);
+    }
+  }
+
+  $notmatched = array_diff($aliases, $found);
+
+  return array( 'status' => !empty($return), 'entry' => $return, 'unmatched' => $notmatched);
+}
+
+function _amazon_clean_name( $value ) {
+
+  // TODO. Need to add a regext to remote the training .
+  $value = str_replace('.com.', '.com', $value);
+
+  return $value;
+}

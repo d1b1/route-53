@@ -1,2 +1,4 @@
 name = Amazon R53
 description = This module provides an integration with the Amazon Route 53 service.
+core = 6.x
+version = 6.x-1.0.0
