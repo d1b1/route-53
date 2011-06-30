@@ -1,4 +1,5 @@
 <?php
+// $Id$
 
 require_once ( dirname(__FILE__) . '/amazon_r53.lib.inc');
 
@@ -107,6 +108,49 @@ function amazon_r53_menu() {
   return $items;
 }
 
+function amazon_r53_help($path, $args) {
+  
+  switch ($path) {
+    case 'admin/settings/r53':
+      return '<p>' 
+      . t('This module provides the ability to manage the zones files and zone entires
+      for an Amazon AWS Route 53 account. To use this module, you need to have the AWS 
+      Auth and ID information. The r53 service has only recently come out of beta, and 
+      AWS does not currently offer an GUI in the AWS.Amazon.com interface. Knownledge of
+      DNS records files and requirements is required.') . '</p>';  
+
+    case 'admin/settings/r53/zones':
+      return '<p>' 
+      . t('This option provides the a list of all the zones attached to your AWS 
+      credentials. Please note, your access maybe controls by the AWS IAM rules and
+      are not configurable from this module. Select the zone you want to manage.') . '</p>';  
+      
+    case 'admin/settings/r53/list':
+      return '<p>' 
+      . t('This is a list of all entries in a the zone file. If the administrator settings
+      for the \'hide types\' is set, then some record types will not be displayed. ') . '</p>';
+      
+    case 'admin/settings/r53/check':
+      return '<p>'
+      . t('This is a developer option to allow for test against the matching logic. This module
+      is designed to integrate into the site setup and management features of Aegir. Aegir site
+      managers will see a R53 DNS tab on the sites content type. This will provide the user 
+      with matching and editing for zone entries.</br><b>This feature is still very beta, so the
+      validation for DSN entries is not complete.')
+      . '</p>';
+      
+    case 'admin/settings/r53/add':
+      return '<p>'
+      . t('This option provides the ability to create a new DNS entry in the current zone 
+      file. Use with care, as the element validation are not in place. This is a beta feature.
+      The code as v2 should prevent you creating problem DNS records in the system. The R53 API
+      is fairly stable and prevent some bad data from impacting records.')
+      . '</p>';
+  }
+  
+}
+
+
 /**
  * Helper function called by the DNS node tab. This is part of the 
  * Aegir integration. When the content type is defined, this tab
@@ -115,10 +159,9 @@ function amazon_r53_menu() {
  */
 function amazon_r53_site_info( $node ) {
 
-  $value = $node->title . '.ngpvanhost.com.';
   $hosted_zone = _amazon_get_current_hosted_zone();
 
-  drupal_set_title('DSN Information for ' . $value);
+  drupal_set_title('DSN Information for ' . $node->title);
 
   // Adding this to test.
   $node->aliases[] = $node->title;
@@ -126,7 +169,7 @@ function amazon_r53_site_info( $node ) {
 
   $output = '';
   if ($result['status']) {
-    $output = '<b>SUCCESS!</b> An entry was found for this in the zone file.<br><br>';
+    $output = '<b>SUCCESS!</b> An entry was found for this in the zone file.<br/><br/>';
 
     $header = array();
     $header[] = array( 'data' => t('Name') );
@@ -137,7 +180,7 @@ function amazon_r53_site_info( $node ) {
       $rows[] = array( 'Name', $entry['Name'] );
       $rows[] = array( 'Type', $entry['Type'] . ' ( ' . _amazon_get_type_name($entry['Type']) . ')' );
       $rows[] = array( 'TTL', $entry['TTL'] . ' seconds' );
-      $rows[] = array( 'Value', implode(',<br>', $entry['ResourceRecords']) );
+      $rows[] = array( 'Value', implode(',<br/>', $entry['ResourceRecords']) );
       $rows[] = array( l('Edit DNS record', 'admin/settings/r53/' . $entry['Name'] . '/edit' ), array( 'colspan' => 2) );
 
       $output .= '<h2>Entry: ' . $entry['Name'] . '</h2>';
@@ -145,16 +188,16 @@ function amazon_r53_site_info( $node ) {
     }
 
     if (isset($result['unmatched']) && !empty($result['unmatched'])) {
-      $output .= "<br><h2>UnManaged or Client Domains</h2>";
-      $output .= "The following domains are managed by NGPVANhost.com zonefile. The client or an different DNS manager is required.<br>";
+      $output .= "<br/><h2>UnManaged or Client Domains</h2>";
+      $output .= "The following domains are managed by zone file. The client or an different DNS manager is required.<br/>";
       $output .= '<ul style="margin: 20px 50px;"><li>' . implode('<li>', $result['unmatched']) . '</ul>';
     }
 
   }
   else {
-  	$output = t('The entry you provides was not found in the zone file; If the DNS
-  	           record is not defined, then this site is using the default wild
-  	           card DNS Entry for the domain.');
+    $output = t('The entry you provides was not found in the zone file; If the DNS
+               record is not defined, then this site is using the default wild
+               card DNS Entry for the domain.');
 
     
     $result = array(_amazon_r53_get_wildcard());
@@ -168,7 +211,7 @@ function amazon_r53_site_info( $node ) {
       $rows[] = array( t('Name'), $entry['Name'] );
       $rows[] = array( t('Type'), $entry['Type'] . ' ( ' . _amazon_get_type_name($entry['Type']) . ')' );
       $rows[] = array( t('TTL'), $entry['TTL'] . ' seconds' );
-      $rows[] = array( t('Value'), implode(',<br>', $entry['ResourceRecords']) );
+      $rows[] = array( t('Value'), implode(',<br/>', $entry['ResourceRecords']) );
 
       $output .= '<h2>Entry: ' . $entry['Name'] . ' (Using Domain *)</h2>';
       $output .= theme('table', $header, $rows);
@@ -193,6 +236,15 @@ function amazon_r53_add_record_form($form, $form_state, $node = NULL, $record = 
   // will redirect the user to the zone list page.
   $hosted_zone = _amazon_get_current_hosted_zone();
 
+  $r53 = _amazon_r53_get_service();
+  if (empty($r53)) {
+    _amazon_r53_message('missing settings');
+    return '';
+  }
+
+  $hosted_zone_info = _amazon_r53_get_zone_info($hosted_zone);
+
+  $collapsed = FALSE;
   if (!empty($node)) {
     $default_aliases = $node->aliases;
     $collapsed = TRUE;
@@ -221,7 +273,7 @@ function amazon_r53_add_record_form($form, $form_state, $node = NULL, $record = 
     $form['dns_info']['name'] = array(
       '#type'          => 'select',
       '#title'         => t('Entry Name'),
-      '#options'       => _amazon_r53_filter($default_aliases),
+      '#options'       => _amazon_r53_filter($default_aliases, $hosted_zone_info),
       '#required'      => TRUE,
       '#element_validate' => array( 'amazon_r53_validate_entry_value' ),
       '#weight'        => 20,
@@ -231,11 +283,11 @@ function amazon_r53_add_record_form($form, $form_state, $node = NULL, $record = 
     $form['dns_info']['name'] = array(
       '#type'          => 'textfield',
       '#title'         => t('Entry Name'),
-      '#default_value' => !empty($entry['Name']) ? $entry['Name'] : '.ngpvanhost.com.',
+      '#default_value' => !empty($entry['Name']) ? $entry['Name'] : '.' . $hosted_zone_info['Name'],
       '#required'      => TRUE,
       '#weight'        => 30,
       '#element_validate' => array( 'amazon_r53_validate_entry_value' ),
-      '#description'   => t('Enter the record value. The value must end in the value .ngpvanhost.com. (training dot is required!)'),
+      '#description'   => t('Enter the record value. The value must end in the value <b>.' . $hosted_zone_info['Name'] . '</b> (training dot is required!)'),
     );
   }
 
@@ -259,7 +311,8 @@ function amazon_r53_add_record_form($form, $form_state, $node = NULL, $record = 
     '#title'         => t('TTL'),
     '#default_value' => !empty($entry['TTL']) ? $entry['TTL'] : variable_get('aws_r53_default_record_ttl', 3600),
     '#required'      => TRUE,
-    '#description'   => t('Enter a time to live in seconds. 100 is the default.'),
+    '#description'   => t('Enter a time to live in seconds. 100 seconds is the default. Given the low latency of the DNS 
+      servers, this default should not be an issue.'),
     '#weight'        => 50,
   );
 
@@ -268,7 +321,7 @@ function amazon_r53_add_record_form($form, $form_state, $node = NULL, $record = 
     '#title'         => t('Value'),
     '#default_value' => !empty($entry['ResourceRecords']) ? _amazon_r53_entry_output($entry['ResourceRecords']) : variable_get('aws_r53_default_record_value', ''),
     '#required'      => TRUE,
-    '#description'   => t('Enter a CName or IP address.') . '<br><br>'. variable_get('aws_helper_entry_values', ''),
+    '#description'   => t('Enter a CName or IP address.') . '<br/><br/>'. variable_get('aws_helper_entry_values', ''),
     '#weight'        => 60,
   );
 
@@ -449,23 +502,6 @@ function _amazon_r53_entry_output( $values = array()) {
 }
 
 /**
- * This is a helper function that will filter the site alisess
- * to only show options that fall in the zonefile base domain.
- */
-function _amazon_r53_filter( $aliases ) {
-
-  $return = array();
-  foreach ($aliases as $idx => $alias) {
-    if (preg_match("/ngpvanhost\.com$/", $alias)) {
-      $return[$alias . '.'] = $alias . '.';
-    }
-
-  }
-  return $return;
-
-}
-
-/**
  * This function will query for a list of all the zones
  * managed by the current auto information.
  */
@@ -513,7 +549,6 @@ function amazon_r53_list_hosted_zones() {
     $rows[] = array('data' => $row);
   }
 
-  $output = 'The following is a list of all the zone files associated with your AWS account.';
   $output .= theme('table', $header, $rows);
 
   return $output;
@@ -543,32 +578,32 @@ function amazon_r53_list() {
 
   $header = array(
     t('Name'),
-	  t('Type'),
-	  t('TTL'),
-	  t('Records'),
+    t('Type'),
+    t('TTL'),
+    t('Records'),
   );
 
   // Stupid solution, but for now, until I get some filters dropped in, this will let
   // the user filter out dns recors that they really do not want to screw with.
   
-  $aws_hide_record_types = explode(',', variable_get('aws_hide_record_types',''));
+  $aws_hide_record_types = explode(',', variable_get('aws_hide_record_types', ''));
 
   $rows = array();
   foreach ($ResourceRecordSets as $index => $entry) {
     if (!in_array($entry['Type'], $aws_hide_record_types)) {
       $row = array();
-  	  $row[] = array( 'data' => l( _amazon_r53_clean($entry['Name']), 'admin/settings/r53/' . $entry['Name'] . '/edit'));
-  	  $row[] = array( 'data' => $entry['Type']);
-  	  $row[] = array( 'data' => $entry['TTL']);
-  	  $row[] = array( 'data' => $entry['ResourceRecords'][0]);
+      $row[] = array( 'data' => l( _amazon_r53_clean($entry['Name']), 'admin/settings/r53/' . $entry['Name'] . '/edit'));
+      $row[] = array( 'data' => $entry['Type']);
+      $row[] = array( 'data' => $entry['TTL']);
+      $row[] = array( 'data' => $entry['ResourceRecords'][0]);
   
-  	  $rows[] = array( 'data' => $row);
+      $rows[] = array( 'data' => $row);
     }
   }
 
-  $output = t('The following is a list of all the zone entries for this zone file. ');
+  $output = '';
   if (user_access('create r53 zone')) {
-   $output .= l('Add New Entry', 'admin/settings/r53/add');
+    $output .= l('Add New Entry', 'admin/settings/r53/add');
   }
 
   $output .= theme('table', $header, $rows);
@@ -592,29 +627,39 @@ function amazon_r53_list() {
  */
 function amazon_r53_check_form($form, $form_state) {
 
+ 
   // Get the current hosted zone. IF not set, this function
   // will redirect the user to the zone list page.
   $hosted_zone = _amazon_get_current_hosted_zone();
 
+  $r53 = _amazon_r53_get_service();
+  if (empty($r53)) {
+    _amazon_r53_message('missing settings');
+    return '';
+  }
+
+  $hosted_zone_info = _amazon_r53_get_zone_info($hosted_zone);
+
+  //----------------
+  
+  $d = _amazon_r53_filter($aliases, $hosted_zone_info);
+  
+  
   drupal_set_title('Check the Status of A Site CName');
 
   $form = array();
 
-  $form['info'] = array(
-    '#value'          => 'This form provides the ability to add an entry into the zone file.',
-  );
-
   $form['hosted_zone'] = array(
     '#type'          => 'textfield',
     '#title'         => t('hosted_zone'),
-    '#default_value' => variable_get('aws_r53_hosted_zone',''),
+    '#default_value' => $hosted_zone_info['Id'],
     '#required'      => TRUE
   );
 
   $form['value'] = array(
     '#type'          => 'textfield',
     '#title'         => t('Value'),
-    '#default_value' => '*.ngpvanhost.com',
+    '#default_value' => '*.' . $hosted_zone_info['Name'],
     '#required'      => TRUE
   );
 

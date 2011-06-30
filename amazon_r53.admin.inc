@@ -1,4 +1,11 @@
 <?php
+// $Id$
+/**
+ * @file
+ * Administrator Form and settings.
+ *
+ * Functons that provides the settings for the module.
+ */
 
 /**
  * This is the settings for the contribution module.
@@ -20,7 +27,7 @@ function amazon_r53_settings() {
     '#collapsed'     => FALSE,
     '#description'   => t('Please enter your AWS User Name.'),
     '#collapsible'   => TRUE,
-    '#default_value' => variable_get('aws_r53_user',''),
+    '#default_value' => variable_get('aws_r53_user', ''),
     '#title'         => t('AWS User Name')
   );
 
@@ -30,7 +37,7 @@ function amazon_r53_settings() {
     '#description'   => t('Please enter the Amazon Access Key ID.'),
     '#collapsible'   => TRUE,
     '#required'      => TRUE,
-    '#default_value' => variable_get('aws_r53_key_id',''),
+    '#default_value' => variable_get('aws_r53_key_id', ''),
     '#title'         => t('AWS Access Key ID')
   );
 
@@ -38,14 +45,14 @@ function amazon_r53_settings() {
     '#type'          => 'textfield',
     '#description'   => t('Please enter the Amazon Secret Key.'),
     '#required'      => TRUE,
-    '#default_value' => variable_get('aws_r53_secret_key',''),
+    '#default_value' => variable_get('aws_r53_secret_key', ''),
     '#title'         => t('AWS Access Key ID')
   );
 
   $form['aws_r53']['aws_r53_hosted_zone'] = array(
     '#type'          => 'textfield',
     '#description'   => t('Please enter the default hosted zone. Optional for now.'),
-    '#default_value' => variable_get('aws_r53_hosted_zone',''),
+    '#default_value' => variable_get('aws_r53_hosted_zone', ''),
     '#title'         => t('Hosted Zone')
   );
 

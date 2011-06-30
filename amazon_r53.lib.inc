@@ -1,5 +1,37 @@
 <?php
+// $Id$
 
+/**
+ * @file
+ * Helper functions for the r53 class.
+ *
+ * All helper functions that provides the interface with the r53 API
+ * and the r53 class.
+ */
+
+/**
+ * This is a helper function that will filter the site alisess
+ * to only show options that fall in the zonefile base domain.
+ */
+function _amazon_r53_filter( $aliases, $hosted_zone_info ) {
+
+  // Get the name.
+  $zone_name = $hosted_zone_info['Name'];
+  
+  dsm($zone_name);
+  
+  $return = array();
+  foreach ($aliases as $idx => $alias) {
+    if (preg_match("/ngpvanhost\.com$/", $alias)) {
+      $return[$alias . '.'] = $alias . '.';
+    }
+
+  }
+  return $return;
+
+}
+ 
+ 
 /**
  * Helper function that returns a clean value 
  * from the raw name. This makes the @, * readable.
@@ -75,8 +107,7 @@ function _amazon_get_type_name( $type ) {
  */
 function _amazon_r53_message( $op ) {
   
-  switch ($op){
-    
+  switch ($op) {
     case 'missing settings':
       drupal_set_message(t('AWS Settings missing. Before you can use this feature, you need to provide some basics.') . l('AWS Routhe 53 Settings', 'admin/settings/r53/settings'));
       break;
@@ -97,13 +128,13 @@ function _amazon_r53_get_record( $record ) {
   $r53 = _amazon_r53_get_service();
 
   $result = $r53->listResourceRecordSets(_amazon_get_current_hosted_zone());
-  $ResourceRecordSets = $result['ResourceRecordSets'];
+  $esource_record_sets = $result['ResourceRecordSets'];
 
   $return = NULL;
 
   // This need to be refactored. The . is a hack for now.
-  foreach ($ResourceRecordSets as $index => $entry) {
-    if ($entry['Name'] == $record.'.') {
+  foreach ($esource_record_sets as $index => $entry) {
+    if ($entry['Name'] == $record . '.') {
       $return = $entry;
     }
   }
@@ -120,30 +151,30 @@ function _amazon_r53_lookup_site($type = 'byname', $aliases = array() ) {
 
   // Get the Service.
   $r53 = _amazon_r53_get_service();
-  
+
   // Call the Service
   $result = $r53->listResourceRecordSets(_amazon_get_current_hosted_zone());
-  $ResourceRecordSets = $result['ResourceRecordSets'];
-   
+  $resource_record_sets = $result['ResourceRecordSets'];
+
   // Init the return values.
   $return    = array();
   $found     = array();
   $notmatched = array();
-  
-  switch ($type){
+
+  switch ($type) {
     case 'wildcard':
       // Look for values starting with * or \052.
-      foreach ($ResourceRecordSets as $index => $entry) {
+      foreach ($resource_record_sets as $index => $entry) {
         if (preg_match('#^\\\052#', $entry['Name'])) {
           $return[] = $entry;
           $found[] = _amazon_r53_clean($entry['Name']);
         }
       }
       break;
-      
+
     case 'root':
       // Look for values starting with @ or \100.
-      foreach ($ResourceRecordSets as $index => $entry) {
+      foreach ($resource_record_sets as $index => $entry) {
         if (preg_match('#^\\\100#', $entry['Name'])) {
           $return[] = $entry;
           $found[] = _amazon_r53_clean($entry['Name']);
@@ -153,9 +184,11 @@ function _amazon_r53_lookup_site($type = 'byname', $aliases = array() ) {
 
     case 'bytype':
       // Find by Entry Type: MX, CNAME, A
-      if (!is_array($aliases)) {  $aliases = array( $aliases ); }
+      if (!is_array($aliases)) {
+        $aliases = array($aliases); 
+      }
 
-      foreach ($ResourceRecordSets as $index => $entry) {
+      foreach ($resource_record_sets as $index => $entry) {
         if (in_array(_amazon_r53_clean($entry['Type']), $aliases)) {
           $return[] = $entry;
           $found[] = _amazon_r53_clean($entry['Name']);
@@ -166,7 +199,7 @@ function _amazon_r53_lookup_site($type = 'byname', $aliases = array() ) {
 
     case 'byname':
       // Find by name.
-      foreach ($ResourceRecordSets as $index => $entry) {
+      foreach ($resource_record_sets as $index => $entry) {
         if (in_array(_amazon_r53_clean($entry['Name']), $aliases)) {
           $return[] = $entry;
           $found[] = _amazon_r53_clean($entry['Name']);
@@ -176,8 +209,8 @@ function _amazon_r53_lookup_site($type = 'byname', $aliases = array() ) {
       break;
   }
 
- $notmatched = array_diff($aliases, $found);
- return array( 'status' => !empty($return), 'entry' => $return, 'unmatched' => $notmatched);
+  $notmatched = array_diff($aliases, $found);
+  return array( 'status' => !empty($return), 'entry' => $return, 'unmatched' => $notmatched);
 }
 
 /**
@@ -308,4 +341,30 @@ function _amazon_r53_access( $node ) {
   }
 
   return ($node->type=='site');
+}
+
+/**
+ * this is a helper that gets the current zone record
+ * for use in the add/edit form.
+ */
+function _amazon_r53_get_zone_info($find_zone) {
+
+  $hosted_zone = _amazon_get_current_hosted_zone();
+  $r53 = _amazon_r53_get_service();
+  
+  $r53 = _amazon_r53_get_service();
+  if (empty($r53)) {
+    return NULL;
+  }
+
+  $result = $r53->listHostedZones();
+
+  foreach ($result['HostedZone'] as $zone) {
+    if ($zone['Id']==$find_zone) {
+      return $zone;
+    }
+
+  }
+  
+  return NULL;
 }

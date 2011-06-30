@@ -1,4 +1,11 @@
 <?php
+// $Id$
+/**
+ * @file
+ * Install Functions.
+ *
+ * Install functions for the module.
+ */
 
 function amazon_r53_requirements($phase) {
 
