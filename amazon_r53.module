@@ -643,8 +643,7 @@ function amazon_r53_check_form($form, $form_state) {
   //----------------
   
   $d = _amazon_r53_filter($aliases, $hosted_zone_info);
-  
-  
+ 
   drupal_set_title('Check the Status of A Site CName');
 
   $form = array();
