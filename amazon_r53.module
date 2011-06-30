@@ -108,18 +108,6 @@ function amazon_r53_menu() {
 }
 
 /**
- * Helper function to manage the site tab for DNS entires
- */
-function _amazon_r53_access( $node ) {
-
-  if (empty($node)) {
-    return FALSE;
-  }
-
-  return ($node->type=='site');
-}
-
-/**
  * Helper function called by the DNS node tab. This is part of the 
  * Aegir integration. When the content type is defined, this tab
  * will lookup the dns entries in the current zone using the site->aliases.
@@ -185,7 +173,6 @@ function amazon_r53_site_info( $node ) {
       $output .= '<h2>Entry: ' . $entry['Name'] . ' (Using Domain *)</h2>';
       $output .= theme('table', $header, $rows);
     }
-
   }
 
   $output .= drupal_get_form('amazon_r53_add_record_form', $form_state, $node);
@@ -281,10 +268,7 @@ function amazon_r53_add_record_form($form, $form_state, $node = NULL, $record = 
     '#title'         => t('Value'),
     '#default_value' => !empty($entry['ResourceRecords']) ? _amazon_r53_entry_output($entry['ResourceRecords']) : variable_get('aws_r53_default_record_value', ''),
     '#required'      => TRUE,
-    '#description'   => t('Enter a CName or IP address.<br><br>
-        West ELB: <b>shared-w-1953938407.us-west-1.elb.amazonaws.com</b><br>
-        East ELB: <b>shared-e-1663387816.us-east-1.elb.amazonaws.com</b>
-        '),
+    '#description'   => t('Enter a CName or IP address.') . '<br><br>'. variable_get('aws_helper_entry_values', ''),
     '#weight'        => 60,
   );
 
@@ -482,124 +466,45 @@ function _amazon_r53_filter( $aliases ) {
 }
 
 /**
- * This function gets the base R53 Class.
- */
-function _amazon_r53_get_service() {
-
- // Load the r53.php class into the module
-
-  require_once('r53.php');
-  $r53 = new Route53(variable_get('aws_r53_key_id', ''), variable_get('aws_r53_secret_key', ''));
-
-  return $r53;
-}
-
-function _amazon_r53_change_resource_record( $requested_changes ) {
-
-  $r53 = _amazon_r53_get_service();
-  $hosted_zone = _amazon_get_current_hosted_zone();
-
-  $changes = array();
-  foreach ($requested_changes as $key => $value) {
-    $changes[] = $r53->prepareChange($value['mode'], $value['name'], $value['type'], $value['ttl'], $value['value']);
-  }
-
-  $result = $r53->changeResourceRecordSets($hosted_zone, $changes);
-
-  if (!empty($result)) {
-	  if ($result['Status']=='PENDING') {
-	    $status = TRUE;
-	    $message = 'Change is processing.';
-	    $id = $result['Id'];
-	  }
-	  else {
-	    $status = FALSE;
-	    $message = 'Unknown';
-	    $id = 'NA';
-	  }
-  }
-  else {
-    $status = FALSE;
-    $message = 'Failed';
-    $id = 'NA';
-  }
-
-  return array('status' => $status, 'message' => $message, 'id' => $id);
-}
-
-/**
- * This function returns a valid list of Record Types.
- */
-function _amazon_r53_get_record_types() {
-
-  return array(
-    'A'     => 'A Record',
-    'AAAA'  => 'AAAA Record',
-    'CNAME' => 'CName',
-    'MX'    => 'MX',
-    'NS'    => 'NS',
-    'PTR'   => 'PTR',
-    'SOA'   => 'SOA',
-    'SPF'   => 'SPF',
-    'SRV'   => 'SRV',
-    'TXT'   => 'TXT',
-  );
-
-}
-
-/**
- * This function checks that the Zone is defined. If not defined
- * this will push the user to the list of zone files. Coming soon...
- */
-function _amazon_get_current_hosted_zone() {
-
-  $hosted_zone = $_SESSION['hosted_zone_id']; //variable_get('aws_r53_hosted_zone','');
-
-  if (!$hosted_zone) {
-    drupal_goto('admin/settings/r53/zones');
-  }
-
-  return $hosted_zone;
-}
-
-function _amazon_get_hosted_zones() {
-
-  $r53 = _amazon_r53_get_service();
-
-  $result = $r53->listHostedZones();
-
-}
-
-/**
  * This function will query for a list of all the zones
  * managed by the current auto information.
  */
 function amazon_r53_list_hosted_zones() {
 
+  drupal_set_title('Amazon R53 Zones');
+  
   $r53 = _amazon_r53_get_service();
+  if (empty($r53)) {
+    _amazon_r53_message('missing settings');
+    return '';
+  }
 
   $result = $r53->listHostedZones();
   $hostedZone = $result['HostedZone'];
 
   $header = array(
-    array('data' => 'Status'), 
-    array('data' => ID),
+    'Status', 
+    'ID',
     'Name',
     '',
     '',
   );
 
   // When a zone is selected, we dump into session. 
-  if ($_GET['z']) {
+  if (isset($_GET['z'])) {
     $_SESSION['hosted_zone_id']   = $_GET['z'];
     $_SESSION['hosted_zone_name'] = $_GET['n'];
-    //drupal_goto('admin/settings/r53/list');
+    // For Dev. Remove once we go live.
+    // drupal_goto('admin/settings/r53/list');
   }
+  
+  // recode this.
+  $current_session_zone = isset($_SESSION['hosted_zone_id']) ? $_SESSION['hosted_zone_id'] : '';
 
   $rows = array();
   foreach ($hostedZone as $idx => $zone) {
     $row = array();
-    $row[] = array('data' => $_SESSION['hosted_zone_id']==$zone['Id'] ? 'X' : '');
+    $row[] = array('data' => $current_session_zone==$zone['Id'] ? 'X' : '');
     $row[] = array('data' => $zone['Id']);
     $row[] = array('data' => $zone['Name']);
     $row[] = array('data' => l(t('Select'), 'admin/settings/r53/zones', array( 'query' => 'z=' . $zone['Id'] . '&n=' . $zone['Name'])) );
@@ -621,13 +526,18 @@ function amazon_r53_list() {
 
   drupal_set_title('Amazon Route 53 Zone Records');
 
+  $r53 = _amazon_r53_get_service();
+  if (empty($r53)) {
+    _amazon_r53_message('missing settings');
+    return '';
+  }
+  
+  // Get the Current Session zone. Need t pslit this logic
+  // so the Aegir site calls use a specific zone, bs the session
+  // approach.
   $hosted_zone = _amazon_get_current_hosted_zone();
 
-  $r53 = _amazon_r53_get_service();
-
-  //dsm($r53->listHostedZones());
-  //dsm($r53->getHostedZone('/hostedzone/Z6Y5M2ZF24ULI'));
-
+  // TODO: move to a helper function. no class methods here. 
   $result = $r53->listResourceRecordSets($hosted_zone);
   $ResourceRecordSets = $result['ResourceRecordSets'];
 
@@ -638,15 +548,22 @@ function amazon_r53_list() {
 	  t('Records'),
   );
 
+  // Stupid solution, but for now, until I get some filters dropped in, this will let
+  // the user filter out dns recors that they really do not want to screw with.
+  
+  $aws_hide_record_types = explode(',', variable_get('aws_hide_record_types',''));
+
   $rows = array();
   foreach ($ResourceRecordSets as $index => $entry) {
-    $row = array();
-	$row[] = array( 'data' => l( _amazon_r53_clean($entry['Name']), 'admin/settings/r53/' . $entry['Name'] . '/edit'));
-	$row[] = array( 'data' => $entry['Type']);
-	$row[] = array( 'data' => $entry['TTL']);
-	$row[] = array( 'data' => $entry['ResourceRecords'][0]);
-
-	$rows[] = array( 'data' => $row);
+    if (!in_array($entry['Type'], $aws_hide_record_types)) {
+      $row = array();
+  	  $row[] = array( 'data' => l( _amazon_r53_clean($entry['Name']), 'admin/settings/r53/' . $entry['Name'] . '/edit'));
+  	  $row[] = array( 'data' => $entry['Type']);
+  	  $row[] = array( 'data' => $entry['TTL']);
+  	  $row[] = array( 'data' => $entry['ResourceRecords'][0]);
+  
+  	  $rows[] = array( 'data' => $row);
+    }
   }
 
   $output = t('The following is a list of all the zone entries for this zone file. ');
@@ -656,12 +573,22 @@ function amazon_r53_list() {
 
   $output .= theme('table', $header, $rows);
 
+  // If we excluded records, lets let the user know.
+  if (is_array($aws_hide_record_types) && count($aws_hide_record_types) > 1) {
+    $output .= t('The following Entry Types have been excluded from this list. ') . implode(', ', $aws_hide_record_types);
+  }
+  else {
+    $output .= '** No Record type filters enabled.';
+  }
+  
   return $output;
 }
 
 /**
  * This builds the check for existing zone files. This is for use
  * during the development of the Aegir site integration.
+ * 
+ * TODO: Add the elemetn validation. CTools validation would help
  */
 function amazon_r53_check_form($form, $form_state) {
 
@@ -736,94 +663,3 @@ function amazon_r53_check_form_submit($form, $form_state) {
 
 }
 
-/**
- * This function will get the recordset information for a specific record
- * in the Hosted Zone
- */
-function _amazon_r53_get_record( $record ) {
-
-  $r53 = _amazon_r53_get_service();
-
-  $result = $r53->listResourceRecordSets(_amazon_get_current_hosted_zone());
-  $ResourceRecordSets = $result['ResourceRecordSets'];
-
-  $return = NULL;
-
-  // This need to be refactored. The . is a hack for now.
-  foreach ($ResourceRecordSets as $index => $entry) {
-    if ($entry['Name'] == $record.'.') {
-      $return = $entry;
-    }
-  }
-
-  return $return;
-}
-
-/*
- * This function will attempt to match the site name to the
- * and the aliases to any existing DNS records.
- *
- */
-function _amazon_r53_lookup_site($type = 'byname', $aliases = array() ) {
-
-  // Get the Service.
-  $r53 = _amazon_r53_get_service();
-  
-  // Call the Service
-  $result = $r53->listResourceRecordSets(_amazon_get_current_hosted_zone());
-  $ResourceRecordSets = $result['ResourceRecordSets'];
-   
-  // Init the return values.
-  $return    = array();
-  $found     = array();
-  $notmatched = array();
-  
-  switch ($type){
-    case 'wildcard':
-      // Look for values starting with * or \052.
-      foreach ($ResourceRecordSets as $index => $entry) {
-        if (preg_match('#^\\\052#', $entry['Name'])) {
-          $return[] = $entry;
-          $found[] = _amazon_r53_clean($entry['Name']);
-        }
-      }
-      break;
-      
-    case 'root':
-      // Look for values starting with @ or \100.
-      foreach ($ResourceRecordSets as $index => $entry) {
-        if (preg_match('#^\\\100#', $entry['Name'])) {
-          $return[] = $entry;
-          $found[] = _amazon_r53_clean($entry['Name']);
-        }
-      }
-      break;
-
-    case 'bytype':
-      // Find by Entry Type: MX, CNAME, A
-      if (!is_array($aliases)) {  $aliases = array( $aliases ); }
-
-      foreach ($ResourceRecordSets as $index => $entry) {
-        if (in_array(_amazon_r53_clean($entry['Type']), $aliases)) {
-          $return[] = $entry;
-          $found[] = _amazon_r53_clean($entry['Name']);
-        }
-      }
-      $notmatched = array_diff($aliases, $found);
-      break;
-
-    case 'byname':
-      // Find by name.
-      foreach ($ResourceRecordSets as $index => $entry) {
-        if (in_array(_amazon_r53_clean($entry['Name']), $aliases)) {
-          $return[] = $entry;
-          $found[] = _amazon_r53_clean($entry['Name']);
-        }
-      }
-      $notmatched = array_diff($aliases, $found);
-      break;
-  }
-
- $notmatched = array_diff($aliases, $found);
- return array( 'status' => !empty($return), 'entry' => $return, 'unmatched' => $notmatched);
-}

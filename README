@@ -1,0 +1,26 @@
+This module is currently under development. The expected features are driven by the requirements
+of hosting sites on two different Amazon Regions. For this reason much of the lookup and display
+focuses on using the rapid response times of the route 53 dns servers. So for now there is no
+caching involved.
+
+There are existing web interfaces that provide this, but not without having to provide a third
+party my AWS ID and Key. Which seems to be just asking for issues down the road. 
+
+This code uses the PHP class setup written by Dan Myers. All hail Dan. Do not mod the r53.php
+head or license info.
+
+http://sourceforge.net/projects/php-r53/
+
+Coming Features:
+
+1. backup and record specific history - We have found that while it is nice to push a given
+site between AWS regions, it would be very nice to have a history of changes to a given Zone
+entry. 
+
+2. batch script - We would like the ability to update a number of entries for a given zone. We
+expect that during server issues, like a zone availability issue in once region, we want to
+migrate all the sites to a different region, maybe for a limited time. Once the cloud is resolved
+we want the ability to roll back the dns changes and get the sites back where we were. Without
+having to review each site by hand.
+
+3. Drush integration is planned but not real priority.
