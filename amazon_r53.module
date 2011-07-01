@@ -640,10 +640,6 @@ function amazon_r53_check_form($form, $form_state) {
 
   $hosted_zone_info = _amazon_r53_get_zone_info($hosted_zone);
 
-  //----------------
-  
-  $d = _amazon_r53_filter($aliases, $hosted_zone_info);
- 
   drupal_set_title('Check the Status of A Site CName');
 
   $form = array();
@@ -655,23 +651,27 @@ function amazon_r53_check_form($form, $form_state) {
     '#required'      => TRUE
   );
 
-  $form['value'] = array(
-    '#type'          => 'textfield',
-    '#title'         => t('Value'),
-    '#default_value' => '*.' . $hosted_zone_info['Name'],
-    '#required'      => TRUE
-  );
-
   $form['type'] = array(
     '#type'          => 'select',
-    '#title'         => t('type'),
-    '#options'       => array('byName', 'byValue'),
+    '#title'         => t('Checking in'),
+    '#default_value' => isset($_GET['type']) ? $_GET['type'] : '',
+    '#options'       => array('byName' => 'in  the Entry Names', 'byValue' => 'in the Entry Values'),
+    '#required'      => TRUE,
+    '#description'   => t('This option let you choose to search the DNS entry names or the values for a specific value.
+      Use this to determine if there is an entry for a given subdomain, or to determine all entires that point to a specific
+      cname, value or IP Address.'),
+  );
+
+  $form['value'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Find'),
+    '#default_value' => isset($_GET['value']) ? $_GET['value'] : '',
     '#required'      => TRUE
   );
 
   $form['submit'] = array(
     '#type'          => 'submit',
-    '#value'         => t('Check Entry')
+    '#value'         => t('Submit')
   );
 
   $form['cancel'] = array(
@@ -686,24 +686,23 @@ function amazon_r53_check_form($form, $form_state) {
  */
 function amazon_r53_check_form_submit($form, $form_state) {
 
-  $values = $form_state['values'];
-
-  $type        = $values['type'];
-  $value       = $values['value'];
-
-  $result = _amazon_r53_lookup_site($type, $value);
+  $result = _amazon_r53_lookup_site($form_state['values']['type'], array($form_state['values']['value']));
 
   if ($result['status']) {
-    drupal_set_message(t('An entry was found for this in the zone file.'));
-    drupal_set_message('Name: ' . $result['entry']['Name']);
-    drupal_set_message('Type: ' . $result['entry']['Type']);
-    drupal_set_message('TTL: ' . $result['entry']['TTL']);
-    drupal_set_message('Value: ' . $result['entry']['ResourceRecords'][0]);
+    foreach ($result['entry'] as $entry) {
+      $str = 'An entry was found for this in the zone file.<br>' .
+             '<b>Name:</b> ' . $entry['Name'] . '<br>' .
+             '<b>Type:</b> ' . $entry['Type'] . '<br>' .
+             '<b>TTL:</b> ' . $entry['TTL'] . '<br>' .
+             '<b>Value:</b> ' . $entry['ResourceRecords'][0];
+      drupal_set_message($str);
+    }
   }
   else {
     drupal_set_message('The entry you provides was not found in the zone file;');
     drupal_set_message('If the DNS record is not defined, then this site is using the default wild card DNS Entry for the domain.');
   }
 
+  drupal_goto('admin/settings/r53/check',  'type=' . $form_state['values']['type'] . '&value=' . $form_state['values']['value']);
 }
 

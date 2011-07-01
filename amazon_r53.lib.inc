@@ -10,25 +10,24 @@
  */
 
 /**
- * This is a helper function that will filter the site alisess
+ * This is a helper function that will filter the site aliases
  * to only show options that fall in the zonefile base domain.
+ * 
+ * Example: "/mydomain\.com$/
  */
 function _amazon_r53_filter( $aliases, $hosted_zone_info ) {
 
-  // Get the name.
-  $zone_name = $hosted_zone_info['Name'];
-  
-  dsm($zone_name);
-  
+  $pattern = '/' . preg_quote(preg_replace('#\.$#', '', $hosted_zone_info['Name']), '#') . '$/';
+
   $return = array();
   foreach ($aliases as $idx => $alias) {
-    if (preg_match("/ngpvanhost\.com$/", $alias)) {
+    if (preg_match($pattern, $alias)) {
       $return[$alias . '.'] = $alias . '.';
     }
 
   }
-  return $return;
 
+  return $return;
 }
  
  
@@ -147,7 +146,7 @@ function _amazon_r53_get_record( $record ) {
  * and the aliases to any existing DNS records.
  *
  */
-function _amazon_r53_lookup_site($type = 'byname', $aliases = array() ) {
+function _amazon_r53_lookup_site($op = 'byname', $aliases = array() ) {
 
   // Get the Service.
   $r53 = _amazon_r53_get_service();
@@ -161,7 +160,7 @@ function _amazon_r53_lookup_site($type = 'byname', $aliases = array() ) {
   $found     = array();
   $notmatched = array();
 
-  switch ($type) {
+  switch (strtolower($op)) {
     case 'wildcard':
       // Look for values starting with * or \052.
       foreach ($resource_record_sets as $index => $entry) {
@@ -205,6 +204,24 @@ function _amazon_r53_lookup_site($type = 'byname', $aliases = array() ) {
           $found[] = _amazon_r53_clean($entry['Name']);
         }
       }
+
+      $notmatched = array_diff($aliases, $found);
+      break;
+      
+    case 'byvalue':
+      // Find by value. This will loop the records and match
+      // any entries by specific value.
+     if (!is_array($aliases)) {
+        $aliases = array($aliases); 
+      }
+
+      foreach ($resource_record_sets as $index => $entry) {
+        if (in_array(_amazon_r53_clean($entry['ResourceRecords'][0]), $aliases)) {
+          $return[] = $entry;
+          $found[] = $entry['ResourceRecords'][0];
+        }
+      }
+
       $notmatched = array_diff($aliases, $found);
       break;
   }
